@@ -14,6 +14,7 @@ pub struct Screen {
     pixel_buffer: [u32; SCREEN_WIDTH * SCREEN_HEIGHT],
 }
 
+#[allow(dead_code)]
 impl Screen {
     pub fn new(name: &str, width: usize, height: usize) -> Self {
         return Screen {

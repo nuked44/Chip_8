@@ -19,7 +19,7 @@ fn main() {
     };
     let mut chip: Chip = Chip::new();
     chip.set_byte(0, 0x69);
-    let x: u8 = chip.get_byte(0);
+    let x: u8 = chip.get_addr(0);
     chip.set_byte(0xFFF, x);
     chip.screen.window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
 

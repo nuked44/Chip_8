@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub enum Inst {
     // Does nothing, for syscall
     EmptyInst,
@@ -66,11 +67,12 @@ pub enum Inst {
     // Store BCD representation of vx in memory locations pointed to by I, I+1, and I+2
     LdBCDR { vx: u8 },
     // Store registers v0 through vx in memory starting at location I
-    LdARI { vx: u8 },
+    LdIR { vx: u8 },
     // Read registers V0 through Vx from memory starting at location I
-    LdIAR { vx: u8 },
+    LdRI { vx: u8 },
 }
 
+#[allow(dead_code)]
 pub fn hex_to_inst(val: u16) -> Inst {
     match val & 0xF000 {
         0x0000 => match val {
@@ -166,8 +168,8 @@ pub fn hex_to_inst(val: u16) -> Inst {
             0x001E => Inst::AddRI { vx: (val & 0x0F00) as u8 }, 
             0x0029 => Inst::LdIF { vx: (val & 0x0F00) as u8 }, 
             0x0033 => Inst::LdBCDR { vx: (val & 0x0F00) as u8 }, 
-            0x0055 => Inst::LdARI  { vx: (val & 0x0F00) as u8 }, 
-            0x0063 => Inst::LdIAR  { vx: (val & 0x0F00) as u8 }, 
+            0x0055 => Inst::LdIR  { vx: (val & 0x0F00) as u8 }, 
+            0x0063 => Inst::LdRI  { vx: (val & 0x0F00) as u8 }, 
             _ => panic!("Illegal instruction {val}")
         },
         _ => panic!("Illegal instruction {val}")
