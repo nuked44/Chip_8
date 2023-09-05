@@ -1,7 +1,7 @@
 #[allow(dead_code)]
 pub enum Inst {
     // Does nothing, for syscall
-    EmptyInst,
+    Empty,
     // Clear the screen
     Cls,
     // Return from subroutine
@@ -13,7 +13,7 @@ pub enum Inst {
     // Skip next inst if value in vx == byte
     SV { vx: u8, byte: u8 },
     // Skip next inst if value in vx != byte
-    SNV { vx: u8, byte: u8 },
+    SnV { vx: u8, byte: u8 },
     // Skip if val in vx == val in vy
     SR { vx: u8, vy: u8 },
     // Loads byte into vx
@@ -35,11 +35,11 @@ pub enum Inst {
     // Shift vx right, VF set to least significant bit of vx
     Shr { vx: u8 },
     // Subtract vx from vy, result stored in vx, if vy > vx VF set to 1, otherwise 0
-    SubNR { vx: u8, vy: u8 },
+    SubnR { vx: u8, vy: u8 },
     // Shift vx left, VF set to most significant bit of vx
     Shl { vx: u8 },
     // Skip if val in vx != val in vy
-    SNR { vx: u8, vy: u8 },
+    SnR { vx: u8, vy: u8 },
     // Load addr into register I
     LdI { addr: u16 },
     // Jumps to addr + V0
@@ -51,7 +51,7 @@ pub enum Inst {
     // Skip next instruction if key with the value of vx is pressed
     SKp { vx: u8 },
     // Skip next instruction if key with the value of vx is not pressed
-    SKNp { vx: u8 },
+    SKnp { vx: u8 },
     // Set vx to delay timer val
     LdRDt { vx: u8 },
     // Wait for a key press, store the value of the key in vx
@@ -78,7 +78,7 @@ pub fn hex_to_inst(val: u16) -> Inst {
         0x0000 => match val {
             0x00E0 => Inst::Cls,
             0x00EE => Inst::Ret,
-            _ => Inst::EmptyInst,
+            _ => Inst::Empty,
         },
         0x1000 => Inst::Jmp { addr: val & 0x0FFF },
         0x2000 => Inst::Call { addr: val & 0x0FFF },
@@ -86,7 +86,7 @@ pub fn hex_to_inst(val: u16) -> Inst {
             vx: ((val & 0x0F00) >> 8) as u8,
             byte: (val & 0x00FF) as u8,
         },
-        0x4000 => Inst::SNV {
+        0x4000 => Inst::SnV {
             vx: ((val & 0x0F00) >> 8) as u8,
             byte: (val & 0x00FF) as u8,
         },
@@ -131,16 +131,16 @@ pub fn hex_to_inst(val: u16) -> Inst {
             0x8006 => Inst::Shr {
                 vx: ((val & 0x0F00) >> 8) as u8,
             },
-            0x8007 => Inst::SubNR {
+            0x8007 => Inst::SubnR {
                 vx: ((val & 0x0F00) >> 8) as u8,
                 vy: ((val & 0x00F0) >> 4) as u8,
             },
             0x800E => Inst::Shl {
                 vx: ((val & 0x0F00) >> 8) as u8,
             },
-            _ => panic!("Illegal instruction {val}")
+            _ => panic!("Illegal instruction {val}"),
         },
-        0x9000 => Inst::SNR {
+        0x9000 => Inst::SnR {
             vx: ((val & 0x0F00) >> 8) as u8,
             vy: ((val & 0x00F0) >> 4) as u8,
         },
@@ -156,22 +156,44 @@ pub fn hex_to_inst(val: u16) -> Inst {
             n: (val & 0x000F) as u8,
         },
         0xE000 => match val & 0x00FF {
-            0x009E => Inst::SKp { vx: (val & 0x0F00) as u8 },
-            0x00A1 => Inst::SKNp { vx: (val & 0x0F00) as u8 },
-            _ => panic!("Illegal instruction {val}")
+            0x009E => Inst::SKp {
+                vx: (val & 0x0F00) as u8,
+            },
+            0x00A1 => Inst::SKnp {
+                vx: (val & 0x0F00) as u8,
+            },
+            _ => panic!("Illegal instruction {val}"),
         },
         0xF000 => match val & 0x00FF {
-            0x0007 => Inst::LdRDt { vx: (val & 0x0F00) as u8 },
-            0x000A => Inst::LdRKp { vx: (val & 0x0F00) as u8 },
-            0x0015 => Inst::LdDtR { vx: (val & 0x0F00) as u8 },
-            0x0018 => Inst::LdStR { vx: (val & 0x0F00) as u8 },
-            0x001E => Inst::AddRI { vx: (val & 0x0F00) as u8 }, 
-            0x0029 => Inst::LdIF { vx: (val & 0x0F00) as u8 }, 
-            0x0033 => Inst::LdBCDR { vx: (val & 0x0F00) as u8 }, 
-            0x0055 => Inst::LdIR  { vx: (val & 0x0F00) as u8 }, 
-            0x0063 => Inst::LdRI  { vx: (val & 0x0F00) as u8 }, 
-            _ => panic!("Illegal instruction {val}")
+            0x0007 => Inst::LdRDt {
+                vx: (val & 0x0F00) as u8,
+            },
+            0x000A => Inst::LdRKp {
+                vx: (val & 0x0F00) as u8,
+            },
+            0x0015 => Inst::LdDtR {
+                vx: (val & 0x0F00) as u8,
+            },
+            0x0018 => Inst::LdStR {
+                vx: (val & 0x0F00) as u8,
+            },
+            0x001E => Inst::AddRI {
+                vx: (val & 0x0F00) as u8,
+            },
+            0x0029 => Inst::LdIF {
+                vx: (val & 0x0F00) as u8,
+            },
+            0x0033 => Inst::LdBCDR {
+                vx: (val & 0x0F00) as u8,
+            },
+            0x0055 => Inst::LdIR {
+                vx: (val & 0x0F00) as u8,
+            },
+            0x0063 => Inst::LdRI {
+                vx: (val & 0x0F00) as u8,
+            },
+            _ => panic!("Illegal instruction {val}"),
         },
-        _ => panic!("Illegal instruction {val}")
+        _ => panic!("Illegal instruction {val}"),
     }
 }

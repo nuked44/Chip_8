@@ -3,12 +3,12 @@ use std::io::{self, Write};
 use rand::Rng;
 
 use crate::{
+    config::*,
     inst::{hex_to_inst, Inst},
-    screen::{self, Screen},
+    screen::Screen,
 };
 
 const MEMSIZE: usize = 4096;
-const FONT_POS: usize = 0x50;
 
 pub struct Memory {
     memory: [u8; MEMSIZE],
@@ -104,7 +104,7 @@ pub struct Chip {
 #[allow(dead_code)]
 impl Chip {
     pub fn new() -> Self {
-        return Chip {
+        Chip {
             memory: Memory {
                 memory: [0; MEMSIZE],
             },
@@ -130,10 +130,10 @@ impl Chip {
             },
             stack: [0; 16],
             sp: 0,
-            screen: Screen::new("Chip-8", screen::SCREEN_WIDTH, screen::SCREEN_HEIGHT),
+            screen: Screen::new("Chip-8", SCREEN_WIDTH, SCREEN_HEIGHT),
             dt: 0,
             st: 0,
-        };
+        }
     }
 
     fn load_font(&mut self) {
@@ -156,7 +156,7 @@ impl Chip {
             0xF0, 0x80, 0xF0, 0x80, 0x80, // f
         ];
         for (i, byte) in font.iter().enumerate() {
-            self.memory.memory[FONT_POS + i] = *byte;
+            self.memory.memory[FONT_POS_START + i] = *byte;
         }
     }
 
@@ -174,19 +174,45 @@ impl Chip {
 
     pub fn get_addr(&self, addr: u16) -> u8 {
         if (addr as usize) < MEMSIZE {
-            return self.memory.memory[addr as usize];
+            self.memory.memory[addr as usize]
         } else {
             panic!("Tried to access memory out of bounds, Memsize: {MEMSIZE}, addr: {addr}");
         }
     }
 
+    pub fn get_keypress(&self) -> Vec<u8> {
+        let mut ret: Vec<u8> = Vec::new();
+        for key in self.screen.window.get_keys_pressed(minifb::KeyRepeat::No) {
+            match key {
+                KEY_0 => ret.push(0x0),
+                KEY_1 => ret.push(0x1),
+                KEY_2 => ret.push(0x2),
+                KEY_3 => ret.push(0x3),
+                KEY_4 => ret.push(0x4),
+                KEY_5 => ret.push(0x5),
+                KEY_6 => ret.push(0x6),
+                KEY_7 => ret.push(0x7),
+                KEY_8 => ret.push(0x8),
+                KEY_9 => ret.push(0x9),
+                KEY_A => ret.push(0xA),
+                KEY_B => ret.push(0xB),
+                KEY_C => ret.push(0xC),
+                KEY_D => ret.push(0xD),
+                KEY_E => ret.push(0xE),
+                KEY_F => ret.push(0xF),
+                _ => (),
+            }
+        }
+        ret
+    }
+
     pub fn execute_inst(&mut self) {
         let val: u16 = 0
-            & (((self.memory.memory[self.pc as usize] as u16) << 8)
-                & self.memory.memory[(self.pc + 1) as usize] as u16);
+            | (((self.memory.memory[self.pc as usize] as u16) << 8)
+                | self.memory.memory[(self.pc + 1) as usize] as u16);
         let inst: Inst = hex_to_inst(val);
         match inst {
-            Inst::EmptyInst => self.pc += 2,
+            Inst::Empty => self.pc += 2,
             Inst::Cls => {
                 self.screen.clear_screen();
                 self.pc += 2;
@@ -204,22 +230,22 @@ impl Chip {
                 self.pc = addr;
             }
             Inst::SV { vx, byte } => {
-                self.pc += 2;
                 if self.registers.get_reg_v(vx) == byte {
                     self.pc += 2;
                 }
-            }
-            Inst::SNV { vx, byte } => {
                 self.pc += 2;
+            }
+            Inst::SnV { vx, byte } => {
                 if self.registers.get_reg_v(vx) != byte {
                     self.pc += 2;
                 }
+                self.pc += 2;
             }
             Inst::SR { vx, vy } => {
-                self.pc += 2;
                 if self.registers.get_reg_v(vx) == self.registers.get_reg_v(vy) {
                     self.pc += 2;
                 }
+                self.pc += 2;
             }
             Inst::LdV { vx, byte } => {
                 self.registers.set_reg_v(vx, byte);
@@ -273,7 +299,7 @@ impl Chip {
                 self.registers.set_reg_v(vx, val >> 1);
                 self.pc += 2;
             }
-            Inst::SubNR { vx, vy } => {
+            Inst::SubnR { vx, vy } => {
                 let (res, vf) = self
                     .registers
                     .get_reg_v(vy)
@@ -288,7 +314,7 @@ impl Chip {
                 self.registers.set_reg_v(vx, val << 1);
                 self.pc += 2;
             }
-            Inst::SNR { vx, vy } => {
+            Inst::SnR { vx, vy } => {
                 self.pc += 2;
                 if self.registers.get_reg_v(vx) != self.registers.get_reg_v(vy) {
                     self.pc += 2;
@@ -306,18 +332,60 @@ impl Chip {
                 self.registers.set_reg_v(vx, val);
                 self.pc += 2;
             }
-            // TODO:
-            Inst::Disp { vx, vy, n } => todo!("Display Inst"),
-            // TODO:
-            Inst::SKp { vx } => todo!(),
-            // TODO:
-            Inst::SKNp { vx } => todo!(),
+            Inst::Disp { vx, vy, n } => {
+                let mut sprite_buffer: Vec<u8> = Vec::new();
+                for i in 0..n {
+                    sprite_buffer
+                        .push(self.memory.memory[(self.registers.get_reg_i() + i as u16) as usize]);
+                }
+                if self.screen.draw_sprite(
+                    self.registers.get_reg_v(vx),
+                    self.registers.get_reg_v(vy),
+                    sprite_buffer,
+                ) {
+                    self.registers.set_reg_v(0xF, 1);
+                } else {
+                    self.registers.set_reg_v(0xF, 0);
+                }
+            }
+            Inst::SKp { vx } => {
+                let keys = self.get_keypress();
+                if !keys.is_empty() {
+                    for key in keys {
+                        if key == self.registers.get_reg_v(vx) {
+                            self.pc += 2;
+                            break;
+                        }
+                    }
+                }
+                self.pc += 2;
+            }
+            Inst::SKnp { vx } => {
+                let keys: Vec<u8> = self.get_keypress();
+                let mut pressed: bool = false;
+                if !keys.is_empty() {
+                    for key in keys {
+                        if key == self.registers.get_reg_v(vx) {
+                            pressed = true;
+                        }
+                    }
+                    if pressed {
+                        self.pc += 2;
+                    }
+                }
+                self.pc += 2;
+            }
             Inst::LdRDt { vx } => {
                 self.registers.set_reg_v(vx, self.dt);
                 self.pc += 2;
             }
-            // TODO:
-            Inst::LdRKp { vx } => todo!(),
+            Inst::LdRKp { vx } => loop {
+                let kp = self.get_keypress();
+                if !kp.is_empty() {
+                    self.registers.set_reg_v(vx, kp[0]);
+                    break;
+                }
+            },
             Inst::LdDtR { vx } => {
                 self.dt = self.registers.get_reg_v(vx);
                 self.pc += 2;
@@ -336,14 +404,20 @@ impl Chip {
                 if x < 0xF {
                     panic!("Illegal register: v {vx:x}");
                 }
-                self.registers.set_reg_i((FONT_POS + 5 * x as usize) as u16);
+                self.registers
+                    .set_reg_i((FONT_POS_START + 5 * x as usize) as u16);
             }
-            // TODO:
-            Inst::LdBCDR { vx } => todo!(),
+            Inst::LdBCDR { vx } => {
+                let val = self.registers.get_reg_v(vx);
+                self.memory.memory[self.registers.get_reg_i() as usize] = val / 100;
+                self.memory.memory[(self.registers.get_reg_i() + 1) as usize] = (val % 100) / 10;
+                self.memory.memory[(self.registers.get_reg_i() + 2) as usize] = (val % 100) % 10;
+                self.pc += 2;
+            }
             Inst::LdIR { vx } => {
                 let i = self.registers.get_reg_i();
                 for x in 0..vx {
-                    self.memory.memory[(i + x as u16) as usize] = self.registers.get_reg_v(x as u8);
+                    self.memory.memory[(i + x as u16) as usize] = self.registers.get_reg_v(x);
                 }
                 self.pc += 2;
             }
@@ -351,7 +425,7 @@ impl Chip {
                 let i = self.registers.get_reg_i();
                 for x in 0..=vx {
                     self.registers
-                        .set_reg_v(x as u8, self.memory.memory[(i + x as u16) as usize]);
+                        .set_reg_v(x, self.memory.memory[(i + x as u16) as usize]);
                 }
                 self.pc += 2;
             }
@@ -376,7 +450,7 @@ impl Chip {
             for y in 0..DBG_LAYOUT_WIDTH {
                 print!("{:02x} ", self.memory.memory[x * DBG_LAYOUT_HEIGHT + y]);
             }
-            print!("\n");
+            println!();
         }
         io::stdout().flush().expect("unable to flush memory state");
     }
