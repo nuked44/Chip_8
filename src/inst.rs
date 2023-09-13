@@ -1,4 +1,4 @@
-#[allow(dead_code)]
+#[derive(Debug)]
 pub enum Inst {
     // Does nothing, for syscall
     Empty,
@@ -72,7 +72,6 @@ pub enum Inst {
     LdRI { vx: u8 },
 }
 
-#[allow(dead_code)]
 pub fn hex_to_inst(val: u16) -> Inst {
     match val & 0xF000 {
         0x0000 => match val {
@@ -157,40 +156,40 @@ pub fn hex_to_inst(val: u16) -> Inst {
         },
         0xE000 => match val & 0x00FF {
             0x009E => Inst::SKp {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             0x00A1 => Inst::SKnp {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             _ => panic!("Illegal instruction {val}"),
         },
         0xF000 => match val & 0x00FF {
             0x0007 => Inst::LdRDt {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             0x000A => Inst::LdRKp {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             0x0015 => Inst::LdDtR {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             0x0018 => Inst::LdStR {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             0x001E => Inst::AddRI {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             0x0029 => Inst::LdIF {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             0x0033 => Inst::LdBCDR {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             0x0055 => Inst::LdIR {
-                vx: (val & 0x0F00) as u8,
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
-            0x0063 => Inst::LdRI {
-                vx: (val & 0x0F00) as u8,
+            0x0065 => Inst::LdRI {
+                vx: ((val & 0x0F00) >> 8) as u8,
             },
             _ => panic!("Illegal instruction {val}"),
         },

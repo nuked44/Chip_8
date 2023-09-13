@@ -1,9 +1,20 @@
 use minifb::Key;
 
+use crate::screen::Color;
+
 pub const FONT_POS_START: usize = 0x50;
+pub const PROG_POS_START: usize = 0x200;
 
 pub const SCREEN_WIDTH: usize = 64;
 pub const SCREEN_HEIGHT: usize = 32;
+
+    
+pub const FOREGROUND: Color = Color {
+    r: 255,
+    g: 255,
+    b: 255,
+};
+pub const BACKGROUND: Color = Color { r: 0, g: 0, b: 0 };
 
 // ---------- Keys ----------
 

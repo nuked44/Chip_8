@@ -11,7 +11,7 @@ use crate::{
 const MEMSIZE: usize = 4096;
 
 pub struct Memory {
-    memory: [u8; MEMSIZE],
+    pub memory: [u8; MEMSIZE],
 }
 
 #[allow(dead_code)]
@@ -71,13 +71,13 @@ impl Register {
             0x7 => self.v7,
             0x8 => self.v8,
             0x9 => self.v9,
-            0xa => self.va,
-            0xb => self.vb,
-            0xc => self.vc,
-            0xd => self.vd,
-            0xe => self.ve,
-            0xf => self.vf,
-            _ => panic!("Invalid register get access, reg: v{reg:x}"),
+            0xA => self.va,
+            0xB => self.vb,
+            0xC => self.vc,
+            0xD => self.vd,
+            0xE => self.ve,
+            0xF => self.vf,
+            _ => panic!("Invalid register get access, reg: v {reg:02x}"),
         }
     }
 
@@ -99,6 +99,7 @@ pub struct Chip {
     pub screen: Screen,
     pub dt: u8,
     pub st: u8,
+    pub keyboard: Option<u8>,
 }
 
 #[allow(dead_code)]
@@ -133,6 +134,7 @@ impl Chip {
             screen: Screen::new("Chip-8", SCREEN_WIDTH, SCREEN_HEIGHT),
             dt: 0,
             st: 0,
+            keyboard: None,
         }
     }
 
@@ -160,6 +162,12 @@ impl Chip {
         }
     }
 
+    pub fn load_prog(&mut self, prog: Vec<u8>) {
+        for (i, inst_part) in prog.iter().enumerate() {
+            self.memory.memory[PROG_POS_START + i] = *inst_part;
+        }
+    }
+
     fn set_pc(&mut self, value: u16) {
         self.pc = value;
     }
@@ -180,30 +188,59 @@ impl Chip {
         }
     }
 
-    pub fn get_keypress(&self) -> Vec<u8> {
-        let mut ret: Vec<u8> = Vec::new();
-        for key in self.screen.window.get_keys_pressed(minifb::KeyRepeat::No) {
-            match key {
-                KEY_0 => ret.push(0x0),
-                KEY_1 => ret.push(0x1),
-                KEY_2 => ret.push(0x2),
-                KEY_3 => ret.push(0x3),
-                KEY_4 => ret.push(0x4),
-                KEY_5 => ret.push(0x5),
-                KEY_6 => ret.push(0x6),
-                KEY_7 => ret.push(0x7),
-                KEY_8 => ret.push(0x8),
-                KEY_9 => ret.push(0x9),
-                KEY_A => ret.push(0xA),
-                KEY_B => ret.push(0xB),
-                KEY_C => ret.push(0xC),
-                KEY_D => ret.push(0xD),
-                KEY_E => ret.push(0xE),
-                KEY_F => ret.push(0xF),
-                _ => (),
-            }
+    pub fn get_key(&self, key: u8) -> Option<bool> {
+        match key {
+            0x0 => Some(self.screen.window.is_key_down(KEY_0)),
+            0x1 => Some(self.screen.window.is_key_down(KEY_1)),
+            0x2 => Some(self.screen.window.is_key_down(KEY_2)),
+            0x3 => Some(self.screen.window.is_key_down(KEY_3)),
+            0x4 => Some(self.screen.window.is_key_down(KEY_4)),
+            0x5 => Some(self.screen.window.is_key_down(KEY_5)),
+            0x6 => Some(self.screen.window.is_key_down(KEY_6)),
+            0x7 => Some(self.screen.window.is_key_down(KEY_7)),
+            0x8 => Some(self.screen.window.is_key_down(KEY_8)),
+            0x9 => Some(self.screen.window.is_key_down(KEY_9)),
+            0xA => Some(self.screen.window.is_key_down(KEY_A)),
+            0xB => Some(self.screen.window.is_key_down(KEY_B)),
+            0xC => Some(self.screen.window.is_key_down(KEY_C)),
+            0xD => Some(self.screen.window.is_key_down(KEY_D)),
+            0xE => Some(self.screen.window.is_key_down(KEY_E)),
+            0xF => Some(self.screen.window.is_key_down(KEY_F)),
+            _ => None,
         }
-        ret
+    }
+
+    pub fn key_to_u8(&self, key: Option<minifb::Key>) -> Option<u8> {
+        match key {
+            Some(val) => match val {
+                KEY_0 => Some(0x0),
+                KEY_1 => Some(0x1),
+                KEY_2 => Some(0x2),
+                KEY_3 => Some(0x3),
+                KEY_4 => Some(0x4),
+                KEY_5 => Some(0x5),
+                KEY_6 => Some(0x6),
+                KEY_7 => Some(0x7),
+                KEY_8 => Some(0x8),
+                KEY_9 => Some(0x9),
+                KEY_A => Some(0xA),
+                KEY_B => Some(0xB),
+                KEY_C => Some(0xC),
+                KEY_D => Some(0xD),
+                KEY_E => Some(0xE),
+                KEY_F => Some(0xF),
+                _ => None,
+            },
+            None => None,
+        }
+    }
+
+    pub fn set_keyboard(&mut self, key: Option<u8>) {
+        self.keyboard = key;
+    }
+
+    pub fn get_keyboard(&self) -> Option<u8> {
+        self.keyboard
     }
 
     pub fn execute_inst(&mut self) {
@@ -220,6 +257,7 @@ impl Chip {
             Inst::Ret => {
                 self.sp -= 1;
                 self.pc = self.stack[self.sp as usize];
+                self.pc += 2;
             }
             Inst::Jmp { addr } => {
                 self.pc = addr;
@@ -252,8 +290,8 @@ impl Chip {
                 self.pc += 2;
             }
             Inst::AddV { vx, byte } => {
-                let val = self.registers.get_reg_v(vx);
-                self.registers.set_reg_v(vx, val + byte);
+                let (res, _) = self.registers.get_reg_v(vx).overflowing_add(byte);
+                self.registers.set_reg_v(vx, res);
                 self.pc += 2;
             }
             Inst::LdR { vx, vy } => {
@@ -295,8 +333,8 @@ impl Chip {
             }
             Inst::Shr { vx } => {
                 let val = self.registers.get_reg_v(vx);
-                self.registers.set_reg_v(0xF, val & 0x1);
                 self.registers.set_reg_v(vx, val >> 1);
+                self.registers.set_reg_v(0xF, val & 0x1);
                 self.pc += 2;
             }
             Inst::SubnR { vx, vy } => {
@@ -310,8 +348,8 @@ impl Chip {
             }
             Inst::Shl { vx } => {
                 let val = self.registers.get_reg_v(vx);
-                self.registers.set_reg_v(0xF, val & 0x80);
                 self.registers.set_reg_v(vx, val << 1);
+                self.registers.set_reg_v(0xF, (val >> 7) & 0x1);
                 self.pc += 2;
             }
             Inst::SnR { vx, vy } => {
@@ -347,31 +385,19 @@ impl Chip {
                 } else {
                     self.registers.set_reg_v(0xF, 0);
                 }
+                self.pc += 2;
             }
             Inst::SKp { vx } => {
-                let keys = self.get_keypress();
-                if !keys.is_empty() {
-                    for key in keys {
-                        if key == self.registers.get_reg_v(vx) {
-                            self.pc += 2;
-                            break;
-                        }
-                    }
+                let target = self.registers.get_reg_v(vx);
+                if self.get_key(target).unwrap() {
+                    self.pc += 2;
                 }
                 self.pc += 2;
             }
             Inst::SKnp { vx } => {
-                let keys: Vec<u8> = self.get_keypress();
-                let mut pressed: bool = false;
-                if !keys.is_empty() {
-                    for key in keys {
-                        if key == self.registers.get_reg_v(vx) {
-                            pressed = true;
-                        }
-                    }
-                    if pressed {
-                        self.pc += 2;
-                    }
+                let target = self.registers.get_reg_v(vx);
+                if !self.get_key(target).unwrap() {
+                    self.pc += 2;
                 }
                 self.pc += 2;
             }
@@ -379,13 +405,12 @@ impl Chip {
                 self.registers.set_reg_v(vx, self.dt);
                 self.pc += 2;
             }
-            Inst::LdRKp { vx } => loop {
-                let kp = self.get_keypress();
-                if !kp.is_empty() {
-                    self.registers.set_reg_v(vx, kp[0]);
-                    break;
+            Inst::LdRKp { vx } => {
+                if let Some(val) = self.get_keyboard() {
+                    self.registers.set_reg_v(vx, val);
+                    self.pc += 2;
                 }
-            },
+            }
             Inst::LdDtR { vx } => {
                 self.dt = self.registers.get_reg_v(vx);
                 self.pc += 2;
@@ -401,11 +426,9 @@ impl Chip {
             }
             Inst::LdIF { vx } => {
                 let x = self.registers.get_reg_v(vx);
-                if x < 0xF {
-                    panic!("Illegal register: v {vx:x}");
-                }
                 self.registers
                     .set_reg_i((FONT_POS_START + 5 * x as usize) as u16);
+                self.pc += 2;
             }
             Inst::LdBCDR { vx } => {
                 let val = self.registers.get_reg_v(vx);
@@ -416,7 +439,7 @@ impl Chip {
             }
             Inst::LdIR { vx } => {
                 let i = self.registers.get_reg_i();
-                for x in 0..vx {
+                for x in 0..=vx {
                     self.memory.memory[(i + x as u16) as usize] = self.registers.get_reg_v(x);
                 }
                 self.pc += 2;

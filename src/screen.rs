@@ -37,9 +37,9 @@ impl Screen {
         let before = *pixel;
         *pixel = *pixel != val;
         if !*pixel && before {
-            return false;
+            return true;
         }
-        true
+        false
     }
 
     pub fn draw_sprite(&mut self, x: u8, y: u8, sprite: Vec<u8>) -> bool {
