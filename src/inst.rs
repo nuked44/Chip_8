@@ -33,11 +33,11 @@ pub enum Inst {
     // Subtract vy from vx, result stored in vx, if vx > vy VF set to 1, otherwise 0
     SubR { vx: u8, vy: u8 },
     // Shift vx right, VF set to least significant bit of vx
-    Shr { vx: u8 },
+    Shr { vx: u8, vy: u8 },
     // Subtract vx from vy, result stored in vx, if vy > vx VF set to 1, otherwise 0
     SubnR { vx: u8, vy: u8 },
     // Shift vx left, VF set to most significant bit of vx
-    Shl { vx: u8 },
+    Shl { vx: u8, vy: u8 },
     // Skip if val in vx != val in vy
     SnR { vx: u8, vy: u8 },
     // Load addr into register I
@@ -129,6 +129,7 @@ pub fn hex_to_inst(val: u16) -> Inst {
             },
             0x8006 => Inst::Shr {
                 vx: ((val & 0x0F00) >> 8) as u8,
+                vy: ((val & 0x00F0) >> 4) as u8,
             },
             0x8007 => Inst::SubnR {
                 vx: ((val & 0x0F00) >> 8) as u8,
@@ -136,6 +137,7 @@ pub fn hex_to_inst(val: u16) -> Inst {
             },
             0x800E => Inst::Shl {
                 vx: ((val & 0x0F00) >> 8) as u8,
+                vy: ((val & 0x00F0) >> 4) as u8,
             },
             _ => panic!("Illegal instruction {val}"),
         },

@@ -2,13 +2,14 @@ use minifb::Key;
 
 use crate::screen::Color;
 
+//  Do not change
+pub const MEMSIZE: usize = 4096;
 pub const FONT_POS_START: usize = 0x50;
-pub const PROG_POS_START: usize = 0x200;
-
+pub const PROG_POS_START: u16 = 0x200;
 pub const SCREEN_WIDTH: usize = 64;
 pub const SCREEN_HEIGHT: usize = 32;
 
-    
+// Can change
 pub const FOREGROUND: Color = Color {
     r: 255,
     g: 255,

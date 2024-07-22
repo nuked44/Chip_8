@@ -8,12 +8,6 @@ use crate::{
     screen::Screen,
 };
 
-const MEMSIZE: usize = 4096;
-
-pub struct Memory {
-    pub memory: [u8; MEMSIZE],
-}
-
 #[allow(dead_code)]
 pub struct Register {
     v0: u8,
@@ -80,36 +74,27 @@ impl Register {
             _ => panic!("Invalid register get access, reg: v {reg:02x}"),
         }
     }
-
-    pub fn set_reg_i(&mut self, val: u16) {
-        self.i = val;
-    }
-
-    pub fn get_reg_i(&self) -> u16 {
-        self.i
-    }
 }
 
 pub struct Chip {
-    pub memory: Memory,
+    pub memory: [u8; MEMSIZE],
     pub pc: u16,
     pub registers: Register,
     pub stack: [u16; 16],
-    pub sp: u8,
+    pub stackpointer: u8,
     pub screen: Screen,
-    pub dt: u8,
-    pub st: u8,
+    pub delay_timer: u8,
+    pub sound_timer: u8,
     pub keyboard: Option<u8>,
+    release_key_wait: Option<u8>,
 }
 
 #[allow(dead_code)]
 impl Chip {
-    pub fn new() -> Self {
+    pub fn new(prog_counter: u16, screen: Screen) -> Self {
         Chip {
-            memory: Memory {
-                memory: [0; MEMSIZE],
-            },
-            pc: 0,
+            memory: [0; MEMSIZE],
+            pc: prog_counter,
             registers: Register {
                 v0: 0,
                 v1: 0,
@@ -130,11 +115,12 @@ impl Chip {
                 i: 0,
             },
             stack: [0; 16],
-            sp: 0,
-            screen: Screen::new("Chip-8", SCREEN_WIDTH, SCREEN_HEIGHT),
-            dt: 0,
-            st: 0,
+            stackpointer: 0,
+            screen,
+            delay_timer: 0,
+            sound_timer: 0,
             keyboard: None,
+            release_key_wait: None,
         }
     }
 
@@ -158,13 +144,13 @@ impl Chip {
             0xF0, 0x80, 0xF0, 0x80, 0x80, // f
         ];
         for (i, byte) in font.iter().enumerate() {
-            self.memory.memory[FONT_POS_START + i] = *byte;
+            self.memory[FONT_POS_START + i] = *byte;
         }
     }
 
     pub fn load_prog(&mut self, prog: Vec<u8>) {
         for (i, inst_part) in prog.iter().enumerate() {
-            self.memory.memory[PROG_POS_START + i] = *inst_part;
+            self.memory[PROG_POS_START as usize + i] = *inst_part;
         }
     }
 
@@ -174,7 +160,7 @@ impl Chip {
 
     pub fn set_byte(&mut self, addr: u16, val: u8) {
         if (addr as usize) < MEMSIZE {
-            self.memory.memory[addr as usize] = val;
+            self.memory[addr as usize] = val;
         } else {
             panic!("Tried to access memory out of bounds, Memsize: {MEMSIZE}, addr: {addr}");
         }
@@ -182,7 +168,7 @@ impl Chip {
 
     pub fn get_addr(&self, addr: u16) -> u8 {
         if (addr as usize) < MEMSIZE {
-            self.memory.memory[addr as usize]
+            self.memory[addr as usize]
         } else {
             panic!("Tried to access memory out of bounds, Memsize: {MEMSIZE}, addr: {addr}");
         }
@@ -235,18 +221,10 @@ impl Chip {
         }
     }
 
-    pub fn set_keyboard(&mut self, key: Option<u8>) {
-        self.keyboard = key;
-    }
-
-    pub fn get_keyboard(&self) -> Option<u8> {
-        self.keyboard
-    }
-
     pub fn execute_inst(&mut self) {
         let val: u16 = 0
-            | (((self.memory.memory[self.pc as usize] as u16) << 8)
-                | self.memory.memory[(self.pc + 1) as usize] as u16);
+            | (((self.memory[self.pc as usize] as u16) << 8)
+                | self.memory[(self.pc + 1) as usize] as u16);
         let inst: Inst = hex_to_inst(val);
         match inst {
             Inst::Empty => self.pc += 2,
@@ -255,16 +233,16 @@ impl Chip {
                 self.pc += 2;
             }
             Inst::Ret => {
-                self.sp -= 1;
-                self.pc = self.stack[self.sp as usize];
+                self.stackpointer -= 1;
+                self.pc = self.stack[self.stackpointer as usize];
                 self.pc += 2;
             }
             Inst::Jmp { addr } => {
                 self.pc = addr;
             }
             Inst::Call { addr } => {
-                self.stack[self.sp as usize] = self.pc;
-                self.sp += 1;
+                self.stack[self.stackpointer as usize] = self.pc;
+                self.stackpointer += 1;
                 self.pc = addr;
             }
             Inst::SV { vx, byte } => {
@@ -301,16 +279,19 @@ impl Chip {
             Inst::OrR { vx, vy } => {
                 let val = self.registers.get_reg_v(vx) | self.registers.get_reg_v(vy);
                 self.registers.set_reg_v(vx, val);
+                self.registers.set_reg_v(0xF, 0);
                 self.pc += 2;
             }
             Inst::AndR { vx, vy } => {
                 let val = self.registers.get_reg_v(vx) & self.registers.get_reg_v(vy);
                 self.registers.set_reg_v(vx, val);
+                self.registers.set_reg_v(0xF, 0);
                 self.pc += 2;
             }
             Inst::XorR { vx, vy } => {
                 let val = self.registers.get_reg_v(vx) ^ self.registers.get_reg_v(vy);
                 self.registers.set_reg_v(vx, val);
+                self.registers.set_reg_v(0xF, 0);
                 self.pc += 2;
             }
             Inst::AddR { vx, vy } => {
@@ -331,8 +312,8 @@ impl Chip {
                 self.registers.set_reg_v(0xF, !vf as u8);
                 self.pc += 2;
             }
-            Inst::Shr { vx } => {
-                let val = self.registers.get_reg_v(vx);
+            Inst::Shr { vx, vy } => {
+                let val = self.registers.get_reg_v(vy);
                 self.registers.set_reg_v(vx, val >> 1);
                 self.registers.set_reg_v(0xF, val & 0x1);
                 self.pc += 2;
@@ -346,8 +327,8 @@ impl Chip {
                 self.registers.set_reg_v(0xF, !vf as u8);
                 self.pc += 2;
             }
-            Inst::Shl { vx } => {
-                let val = self.registers.get_reg_v(vx);
+            Inst::Shl { vx, vy } => {
+                let val = self.registers.get_reg_v(vy);
                 self.registers.set_reg_v(vx, val << 1);
                 self.registers.set_reg_v(0xF, (val >> 7) & 0x1);
                 self.pc += 2;
@@ -359,7 +340,7 @@ impl Chip {
                 }
             }
             Inst::LdI { addr } => {
-                self.registers.set_reg_i(addr);
+                self.registers.i = addr;
                 self.pc += 2;
             }
             Inst::JpV0 { addr } => {
@@ -373,8 +354,7 @@ impl Chip {
             Inst::Disp { vx, vy, n } => {
                 let mut sprite_buffer: Vec<u8> = Vec::new();
                 for i in 0..n {
-                    sprite_buffer
-                        .push(self.memory.memory[(self.registers.get_reg_i() + i as u16) as usize]);
+                    sprite_buffer.push(self.memory[(self.registers.i + i as u16) as usize]);
                 }
                 if self.screen.draw_sprite(
                     self.registers.get_reg_v(vx),
@@ -402,54 +382,62 @@ impl Chip {
                 self.pc += 2;
             }
             Inst::LdRDt { vx } => {
-                self.registers.set_reg_v(vx, self.dt);
+                self.registers.set_reg_v(vx, self.delay_timer);
                 self.pc += 2;
             }
             Inst::LdRKp { vx } => {
-                if let Some(val) = self.get_keyboard() {
-                    self.registers.set_reg_v(vx, val);
-                    self.pc += 2;
+                if let Some(key) = self.release_key_wait {
+                    if !self.get_key(key).unwrap() {
+                        self.release_key_wait = None;
+                        self.pc += 2;
+                    }
+                } else {
+                    if let Some(key) = self.keyboard {
+                        self.registers.set_reg_v(vx, key);
+                        self.release_key_wait = Some(key);
+                    }
                 }
             }
             Inst::LdDtR { vx } => {
-                self.dt = self.registers.get_reg_v(vx);
+                self.delay_timer = self.registers.get_reg_v(vx);
                 self.pc += 2;
             }
             Inst::LdStR { vx } => {
-                self.st = self.registers.get_reg_v(vx);
+                self.sound_timer = self.registers.get_reg_v(vx);
                 self.pc += 2;
             }
             Inst::AddRI { vx } => {
-                let val = self.registers.get_reg_i() + self.registers.get_reg_v(vx) as u16;
-                self.registers.set_reg_i(val);
+                let val = self.registers.i + self.registers.get_reg_v(vx) as u16;
+                self.registers.i = val;
                 self.pc += 2;
             }
             Inst::LdIF { vx } => {
                 let x = self.registers.get_reg_v(vx);
-                self.registers
-                    .set_reg_i((FONT_POS_START + 5 * x as usize) as u16);
+                self.registers.i = (FONT_POS_START + 5 * x as usize) as u16;
                 self.pc += 2;
             }
             Inst::LdBCDR { vx } => {
                 let val = self.registers.get_reg_v(vx);
-                self.memory.memory[self.registers.get_reg_i() as usize] = val / 100;
-                self.memory.memory[(self.registers.get_reg_i() + 1) as usize] = (val % 100) / 10;
-                self.memory.memory[(self.registers.get_reg_i() + 2) as usize] = (val % 100) % 10;
+                self.memory[self.registers.i as usize] = val / 100;
+                self.memory[(self.registers.i + 1) as usize] = (val % 100) / 10;
+                self.memory[(self.registers.i + 2) as usize] = (val % 100) % 10;
                 self.pc += 2;
             }
             Inst::LdIR { vx } => {
-                let i = self.registers.get_reg_i();
+                let i = self.registers.i;
                 for x in 0..=vx {
-                    self.memory.memory[(i + x as u16) as usize] = self.registers.get_reg_v(x);
+                    self.memory[(i + x as u16) as usize] = self.registers.get_reg_v(x);
                 }
+                self.registers.i = i + vx as u16 + 1;
                 self.pc += 2;
             }
             Inst::LdRI { vx } => {
-                let i = self.registers.get_reg_i();
+                let i = self.registers.i;
                 for x in 0..=vx {
                     self.registers
-                        .set_reg_v(x, self.memory.memory[(i + x as u16) as usize]);
+                        .set_reg_v(x, self.memory[(i + x as u16) as usize]);
                 }
+                self.registers.i = i + vx as u16 + 1;
                 self.pc += 2;
             }
         }
@@ -471,7 +459,7 @@ impl Chip {
                 x * DBG_LAYOUT_WIDTH + DBG_LAYOUT_WIDTH - 1
             );
             for y in 0..DBG_LAYOUT_WIDTH {
-                print!("{:02x} ", self.memory.memory[x * DBG_LAYOUT_HEIGHT + y]);
+                print!("{:02x} ", self.memory[x * DBG_LAYOUT_HEIGHT + y]);
             }
             println!();
         }
