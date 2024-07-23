@@ -1,57 +1,48 @@
-use minifb::Key;
-
-use crate::screen::Color;
-
 //  Do not change
 pub const MEMSIZE: usize = 4096;
 pub const FONT_POS_START: usize = 0x50;
 pub const PROG_POS_START: u16 = 0x200;
-pub const SCREEN_WIDTH: usize = 64;
-pub const SCREEN_HEIGHT: usize = 32;
+pub const SCREEN_WIDTH: u8 = 64;
+pub const SCREEN_HEIGHT: u8 = 32;
 
 // Can change
-pub const FOREGROUND: Color = Color {
-    r: 255,
-    g: 255,
-    b: 255,
-};
-pub const BACKGROUND: Color = Color { r: 0, g: 0, b: 0 };
+pub const INSTRUCTION_TIMING: u64 = 100;
 
-// ---------- Keys ----------
+// --- Keys ---
 
 // Keys for querty keyboard
-pub const KEY_1: Key = Key::Key1;
-pub const KEY_2: Key = Key::Key2;
-pub const KEY_3: Key = Key::Key3;
-pub const KEY_4: Key = Key::Q;
-pub const KEY_5: Key = Key::W;
-pub const KEY_6: Key = Key::E;
-pub const KEY_7: Key = Key::A;
-pub const KEY_8: Key = Key::S;
-pub const KEY_9: Key = Key::D;
-pub const KEY_0: Key = Key::X;
-pub const KEY_A: Key = Key::Z;
-pub const KEY_B: Key = Key::C;
-pub const KEY_C: Key = Key::Key4;
-pub const KEY_D: Key = Key::R;
-pub const KEY_E: Key = Key::F;
-pub const KEY_F: Key = Key::V;
+pub const KEY_1: char = '1';
+pub const KEY_2: char = '2';
+pub const KEY_3: char = '3';
+pub const KEY_4: char = 'q';
+pub const KEY_5: char = 'w';
+pub const KEY_6: char = 'e';
+pub const KEY_7: char = 'a';
+pub const KEY_8: char = 's';
+pub const KEY_9: char = 'd';
+pub const KEY_0: char = 'x';
+pub const KEY_A: char = 'z';
+pub const KEY_B: char = 'c';
+pub const KEY_C: char = '4';
+pub const KEY_D: char = 'r';
+pub const KEY_E: char = 'f';
+pub const KEY_F: char = 'v';
 
 /* Keys for hex keyboard
-pub const KEY_1: Key = Key::Key1;
-pub const KEY_2: Key = Key::Key2;
-pub const KEY_3: Key = Key::Key3;
-pub const KEY_4: Key = Key::Key4;
-pub const KEY_5: Key = Key::Key5;
-pub const KEY_6: Key = Key::Key6;
-pub const KEY_7: Key = Key::Key7;
-pub const KEY_8: Key = Key::Key8;
-pub const KEY_9: Key = Key::Key9;
-pub const KEY_0: Key = Key::Key0;
-pub const KEY_A: Key = Key::A;
-pub const KEY_B: Key = Key::B;
-pub const KEY_C: Key = Key::C;
-pub const KEY_D: Key = Key::D;
-pub const KEY_E: Key = Key::E;
-pub const KEY_F: Key = Key::F;
+pub const KEY_1: char = '1';
+pub const KEY_2: char = '2';
+pub const KEY_3: char = '3';
+pub const KEY_4: char = '4';
+pub const KEY_5: char = '5';
+pub const KEY_6: char = '6';
+pub const KEY_7: char = '7';
+pub const KEY_8: char = '8';
+pub const KEY_9: char = '9';
+pub const KEY_0: char = '0';
+pub const KEY_A: char = 'a';
+pub const KEY_B: char = 'b';
+pub const KEY_C: char = 'c';
+pub const KEY_D: char = 'd';
+pub const KEY_E: char = 'e';
+pub const KEY_F: char = 'f';
 */

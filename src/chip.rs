@@ -1,11 +1,11 @@
-use std::io::{self, Write};
+use std::time::{Duration, Instant};
 
 use rand::Rng;
 
 use crate::{
     config::*,
     inst::{hex_to_inst, Inst},
-    screen::Screen,
+    screen::Interface,
 };
 
 #[allow(dead_code)]
@@ -76,13 +76,17 @@ impl Register {
     }
 }
 
-pub struct Chip {
+pub struct Chip<T>
+where
+    T: Interface,
+{
+    pub running: bool,
     pub memory: [u8; MEMSIZE],
     pub pc: u16,
     pub registers: Register,
     pub stack: [u16; 16],
     pub stackpointer: u8,
-    pub screen: Screen,
+    pub interface: T,
     pub delay_timer: u8,
     pub sound_timer: u8,
     pub keyboard: Option<u8>,
@@ -90,9 +94,10 @@ pub struct Chip {
 }
 
 #[allow(dead_code)]
-impl Chip {
-    pub fn new(prog_counter: u16, screen: Screen) -> Self {
+impl<T: Interface> Chip<T> {
+    pub fn new(prog_counter: u16, interface: T) -> Self {
         Chip {
+            running: false,
             memory: [0; MEMSIZE],
             pc: prog_counter,
             registers: Register {
@@ -116,7 +121,7 @@ impl Chip {
             },
             stack: [0; 16],
             stackpointer: 0,
-            screen,
+            interface,
             delay_timer: 0,
             sound_timer: 0,
             keyboard: None,
@@ -124,100 +129,70 @@ impl Chip {
         }
     }
 
-    fn load_font(&mut self) {
-        let font: [u8; 80] = [
-            0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-            0x20, 0x60, 0x20, 0x20, 0x70, // 1
-            0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-            0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-            0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-            0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-            0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-            0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-            0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-            0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-            0xF0, 0x90, 0xF0, 0x90, 0x90, // a
-            0xE0, 0x90, 0xE0, 0x90, 0xE0, // b
-            0xF0, 0x80, 0x80, 0x80, 0xF0, // c
-            0xE0, 0x90, 0x90, 0x90, 0xE0, // d
-            0xF0, 0x80, 0xF0, 0x80, 0xF0, // e
-            0xF0, 0x80, 0xF0, 0x80, 0x80, // f
-        ];
-        for (i, byte) in font.iter().enumerate() {
-            self.memory[FONT_POS_START + i] = *byte;
+    pub fn run(&mut self) {
+        self.running = true;
+
+        let mut last_key_update_time = Instant::now();
+        let mut last_instruction_run_time = Instant::now();
+        let mut last_display_time = Instant::now();
+        let mut last_timer_decrement = Instant::now();
+
+        while self.running {
+            // let keys_pressed = self.interface.get_keys_pressed();
+            // let key = if !keys_pressed.is_empty() {
+            //     Some(keys_pressed[0])
+            // } else {
+            //     None
+            // };
+
+            // Update keyboard when key is pressed or after 200ms
+            // let chip8_key = key;
+            // if chip8_key.is_some()
+            //     || Instant::now() - last_key_update_time
+            //         >= Duration::from_micros(100 * INSTRUCTION_TIMING)
+            // {
+            //     last_key_update_time = Instant::now();
+            //     self.keyboard = chip8_key;
+            // }
+
+            // Execute next instruction every 2ms
+            if Instant::now() - last_instruction_run_time
+                > Duration::from_micros(INSTRUCTION_TIMING)
+            {
+                last_instruction_run_time = Instant::now();
+                self.execute_inst();
+            }
+
+            // Update interface every 10ms
+            if Instant::now() - last_display_time > Duration::from_micros(5 * INSTRUCTION_TIMING) {
+                last_display_time = Instant::now();
+                self.interface.update_screen();
+            }
+
+            // Update Sound and Delay timer
+            if Instant::now() - last_timer_decrement > Duration::from_micros(16666) {
+                if self.delay_timer > 0 {
+                    self.delay_timer -= 1;
+                }
+                if self.sound_timer > 0 {
+                    self.sound_timer -= 1;
+                }
+                last_timer_decrement = Instant::now();
+            }
         }
+    }
+
+    pub fn init_interface(&self) {
+        self.interface.init();
+    }
+
+    pub fn stop_interface(&self) {
+        self.interface.stop();
     }
 
     pub fn load_prog(&mut self, prog: Vec<u8>) {
         for (i, inst_part) in prog.iter().enumerate() {
             self.memory[PROG_POS_START as usize + i] = *inst_part;
-        }
-    }
-
-    fn set_pc(&mut self, value: u16) {
-        self.pc = value;
-    }
-
-    pub fn set_byte(&mut self, addr: u16, val: u8) {
-        if (addr as usize) < MEMSIZE {
-            self.memory[addr as usize] = val;
-        } else {
-            panic!("Tried to access memory out of bounds, Memsize: {MEMSIZE}, addr: {addr}");
-        }
-    }
-
-    pub fn get_addr(&self, addr: u16) -> u8 {
-        if (addr as usize) < MEMSIZE {
-            self.memory[addr as usize]
-        } else {
-            panic!("Tried to access memory out of bounds, Memsize: {MEMSIZE}, addr: {addr}");
-        }
-    }
-
-    pub fn get_key(&self, key: u8) -> Option<bool> {
-        match key {
-            0x0 => Some(self.screen.window.is_key_down(KEY_0)),
-            0x1 => Some(self.screen.window.is_key_down(KEY_1)),
-            0x2 => Some(self.screen.window.is_key_down(KEY_2)),
-            0x3 => Some(self.screen.window.is_key_down(KEY_3)),
-            0x4 => Some(self.screen.window.is_key_down(KEY_4)),
-            0x5 => Some(self.screen.window.is_key_down(KEY_5)),
-            0x6 => Some(self.screen.window.is_key_down(KEY_6)),
-            0x7 => Some(self.screen.window.is_key_down(KEY_7)),
-            0x8 => Some(self.screen.window.is_key_down(KEY_8)),
-            0x9 => Some(self.screen.window.is_key_down(KEY_9)),
-            0xA => Some(self.screen.window.is_key_down(KEY_A)),
-            0xB => Some(self.screen.window.is_key_down(KEY_B)),
-            0xC => Some(self.screen.window.is_key_down(KEY_C)),
-            0xD => Some(self.screen.window.is_key_down(KEY_D)),
-            0xE => Some(self.screen.window.is_key_down(KEY_E)),
-            0xF => Some(self.screen.window.is_key_down(KEY_F)),
-            _ => None,
-        }
-    }
-
-    pub fn key_to_u8(&self, key: Option<minifb::Key>) -> Option<u8> {
-        match key {
-            Some(val) => match val {
-                KEY_0 => Some(0x0),
-                KEY_1 => Some(0x1),
-                KEY_2 => Some(0x2),
-                KEY_3 => Some(0x3),
-                KEY_4 => Some(0x4),
-                KEY_5 => Some(0x5),
-                KEY_6 => Some(0x6),
-                KEY_7 => Some(0x7),
-                KEY_8 => Some(0x8),
-                KEY_9 => Some(0x9),
-                KEY_A => Some(0xA),
-                KEY_B => Some(0xB),
-                KEY_C => Some(0xC),
-                KEY_D => Some(0xD),
-                KEY_E => Some(0xE),
-                KEY_F => Some(0xF),
-                _ => None,
-            },
-            None => None,
         }
     }
 
@@ -229,7 +204,7 @@ impl Chip {
         match inst {
             Inst::Empty => self.pc += 2,
             Inst::Cls => {
-                self.screen.clear_screen();
+                self.interface.clear_screen();
                 self.pc += 2;
             }
             Inst::Ret => {
@@ -356,7 +331,7 @@ impl Chip {
                 for i in 0..n {
                     sprite_buffer.push(self.memory[(self.registers.i + i as u16) as usize]);
                 }
-                if self.screen.draw_sprite(
+                if self.interface.draw_sprite(
                     self.registers.get_reg_v(vx),
                     self.registers.get_reg_v(vy),
                     sprite_buffer,
@@ -369,14 +344,14 @@ impl Chip {
             }
             Inst::SKp { vx } => {
                 let target = self.registers.get_reg_v(vx);
-                if self.get_key(target).unwrap() {
+                if self.interface.get_key(target) {
                     self.pc += 2;
                 }
                 self.pc += 2;
             }
             Inst::SKnp { vx } => {
                 let target = self.registers.get_reg_v(vx);
-                if !self.get_key(target).unwrap() {
+                if !self.interface.get_key(target) {
                     self.pc += 2;
                 }
                 self.pc += 2;
@@ -387,7 +362,7 @@ impl Chip {
             }
             Inst::LdRKp { vx } => {
                 if let Some(key) = self.release_key_wait {
-                    if !self.get_key(key).unwrap() {
+                    if !self.interface.get_key(key) {
                         self.release_key_wait = None;
                         self.pc += 2;
                     }
@@ -442,44 +417,48 @@ impl Chip {
             }
         }
     }
-}
 
-// ==========  DBG functions ========== //
-
-const DBG_LAYOUT_WIDTH: usize = 1 << 4;
-const DBG_LAYOUT_HEIGHT: usize = 1 << 8; // rhs has to equal 12 (e.g. 8 and 4)
-
-#[allow(dead_code)]
-impl Chip {
-    fn print_mem(&self) {
-        for x in 0..DBG_LAYOUT_HEIGHT {
-            print!(
-                "{:04x}-{:04x}: ",
-                x * DBG_LAYOUT_WIDTH,
-                x * DBG_LAYOUT_WIDTH + DBG_LAYOUT_WIDTH - 1
-            );
-            for y in 0..DBG_LAYOUT_WIDTH {
-                print!("{:02x} ", self.memory[x * DBG_LAYOUT_HEIGHT + y]);
-            }
-            println!();
+    fn load_font(&mut self) {
+        let font: [u8; 80] = [
+            0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+            0x20, 0x60, 0x20, 0x20, 0x70, // 1
+            0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+            0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+            0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+            0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+            0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+            0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+            0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+            0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+            0xF0, 0x90, 0xF0, 0x90, 0x90, // a
+            0xE0, 0x90, 0xE0, 0x90, 0xE0, // b
+            0xF0, 0x80, 0x80, 0x80, 0xF0, // c
+            0xE0, 0x90, 0x90, 0x90, 0xE0, // d
+            0xF0, 0x80, 0xF0, 0x80, 0xF0, // e
+            0xF0, 0x80, 0xF0, 0x80, 0x80, // f
+        ];
+        for (i, byte) in font.iter().enumerate() {
+            self.memory[FONT_POS_START + i] = *byte;
         }
-        io::stdout().flush().expect("unable to flush memory state");
     }
 
-    fn print_pc(&self) {
-        println!("PC: {}", self.pc);
+    fn set_pc(&mut self, value: u16) {
+        self.pc = value;
     }
 
-    pub fn print_chip(&self) {
-        self.print_mem();
-        self.print_pc();
+    fn set_byte(&mut self, addr: u16, val: u8) {
+        if (addr as usize) < MEMSIZE {
+            self.memory[addr as usize] = val;
+        } else {
+            panic!("Tried to access memory out of bounds, Memsize: {MEMSIZE}, addr: {addr}");
+        }
     }
 
-    pub fn print_info(msg: &str) {
-        println!("[ INFO ]: {msg}");
-    }
-
-    pub fn print_fatal(msg: &str) {
-        println!("[ FATAL ]: {msg}");
+    fn get_addr(&self, addr: u16) -> u8 {
+        if (addr as usize) < MEMSIZE {
+            self.memory[addr as usize]
+        } else {
+            panic!("Tried to access memory out of bounds, Memsize: {MEMSIZE}, addr: {addr}");
+        }
     }
 }
