@@ -131,53 +131,25 @@ impl<T: Interface> Chip<T> {
 
     pub fn run(&mut self) {
         self.running = true;
-
-        let mut last_key_update_time = Instant::now();
-        let mut last_instruction_run_time = Instant::now();
-        let mut last_display_time = Instant::now();
-        let mut last_timer_decrement = Instant::now();
+        let target_frame_time = Duration::from_millis(1 / SCREEN_REFRESH_RATE as u64);
 
         while self.running {
-            // let keys_pressed = self.interface.get_keys_pressed();
-            // let key = if !keys_pressed.is_empty() {
-            //     Some(keys_pressed[0])
-            // } else {
-            //     None
-            // };
+            let frame_start = Instant::now();
 
-            // Update keyboard when key is pressed or after 200ms
-            // let chip8_key = key;
-            // if chip8_key.is_some()
-            //     || Instant::now() - last_key_update_time
-            //         >= Duration::from_micros(100 * INSTRUCTION_TIMING)
-            // {
-            //     last_key_update_time = Instant::now();
-            //     self.keyboard = chip8_key;
-            // }
-
-            // Execute next instruction every 2ms
-            if Instant::now() - last_instruction_run_time
-                > Duration::from_micros(INSTRUCTION_TIMING)
-            {
-                last_instruction_run_time = Instant::now();
+            // Execute next instructions for frame
+            for _ in 0..(INSTRUCTION_FREQUENCY / SCREEN_REFRESH_RATE) {
                 self.execute_inst();
             }
 
-            // Update interface every 10ms
-            if Instant::now() - last_display_time > Duration::from_micros(5 * INSTRUCTION_TIMING) {
-                last_display_time = Instant::now();
-                self.interface.update_screen();
-            }
+            // Update Screen
+            self.interface.update_screen();
 
             // Update Sound and Delay timer
-            if Instant::now() - last_timer_decrement > Duration::from_micros(16666) {
-                if self.delay_timer > 0 {
-                    self.delay_timer -= 1;
-                }
-                if self.sound_timer > 0 {
-                    self.sound_timer -= 1;
-                }
-                last_timer_decrement = Instant::now();
+            self.delay_timer -= 1;
+            self.sound_timer -= 1;
+            let frame_duration = Instant::now() - frame_start;
+            if frame_duration > target_frame_time {
+                std::thread::sleep(target_frame_time - frame_duration);
             }
         }
     }
