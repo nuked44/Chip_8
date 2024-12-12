@@ -26,6 +26,9 @@ fn get_file_in_bytes(filename: &String) -> Vec<u8> {
 }
 
 fn main() {
+    //Debug
+    //env::set_var("RUST_BACKTRACE", "1");
+
     let args: Vec<String> = env::args().collect();
     if args.len() <= 1 {
         panic!("missing filepath argument");
@@ -34,9 +37,9 @@ fn main() {
     let interface = Tui::new();
 
     let mut chip: Chip<Tui> = Chip::new(PROG_POS_START, interface);
-    
+
     chip.load_prog(get_file_in_bytes(&args[1]));
-    
+
     chip.init_interface();
     chip.run();
     chip.stop_interface();
