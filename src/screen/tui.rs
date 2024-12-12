@@ -1,7 +1,7 @@
 use std::{io::{self, Write}, time::Duration};
 
 use crossterm::{
-    cursor, event::{self, Event, KeyCode, KeyEvent}, terminal::{self, EnterAlternateScreen, LeaveAlternateScreen}, ExecutableCommand
+    cursor, event::{self, Event, KeyCode, KeyEvent}, style::Print, terminal::{self, EnterAlternateScreen, LeaveAlternateScreen}, ExecutableCommand, QueueableCommand
 };
 
 use super::{Interface, SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -85,20 +85,21 @@ impl Tui {
     }
 
     fn print_to_term(buffer: [char; 2 * (SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize)]) {
-        let mut handle = io::stdout().lock();
+        let mut stdout = io::stdout().lock();
 
         // Reset cursor to the top-left corner
-        handle.execute(cursor::Hide).unwrap();
-        handle.execute(cursor::MoveTo(0, 0)).unwrap();
+        stdout.queue(cursor::Hide).unwrap();
+        stdout.queue(cursor::MoveTo(0, 0)).unwrap();
 
+        
         for y in 0..SCREEN_HEIGHT as usize {
             for x in 0..(2 * SCREEN_WIDTH) as usize {
-                write!(handle, "{}", buffer[y * (2 * SCREEN_WIDTH as usize) + x]).unwrap();
+                let index = y * (2 * SCREEN_WIDTH as usize) + x;
+                stdout.queue(Print(buffer[index])).unwrap();
             }
-            write!(handle, "\r\n").unwrap(); // Print a newline after each row
+            stdout.queue(Print("\r\n")).unwrap(); // Print a newline after each row
         }
-
-        handle.flush().unwrap();
+        stdout.flush().unwrap();
     }
 }
 
