@@ -132,13 +132,11 @@ impl<T: Interface> Chip<T> {
     pub fn run(&mut self) {
         self.running = true;
         let target_frame_time = Duration::from_secs_f64(1f64 / SCREEN_REFRESH_RATE as f64);
+        let mut last_frame = Instant::now();
 
         let decrement = |timer: &mut u8| *timer = (*timer).saturating_sub(1);
 
         while self.running && !self.interface.get_close_window() {
-            
-            let frame_start = Instant::now();
-
             // Execute next instructions for frame
             for _ in 0..(INSTRUCTION_FREQUENCY / SCREEN_REFRESH_RATE) {
                 self.execute_inst();
@@ -151,10 +149,11 @@ impl<T: Interface> Chip<T> {
             decrement(&mut self.delay_timer);
             decrement(&mut self.sound_timer);
 
-            let frame_duration = Instant::now() - frame_start;
-            if frame_duration < target_frame_time {
-                std::thread::sleep(target_frame_time - frame_duration);
+            let now_frame = Instant::now();
+            if (now_frame - last_frame) < target_frame_time {
+                std::thread::sleep(target_frame_time - (now_frame - last_frame));
             }
+            last_frame = now_frame;
         }
     }
 

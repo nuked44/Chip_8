@@ -1,7 +1,14 @@
-use std::{io::{self, Write}, time::Duration};
+use std::{
+    io::{self, Write},
+    time::Duration,
+};
 
 use crossterm::{
-    cursor, event::{self, Event, KeyCode, KeyEvent}, style::Print, terminal::{self, EnterAlternateScreen, LeaveAlternateScreen}, ExecutableCommand, QueueableCommand
+    cursor,
+    event::{self, Event, KeyCode, KeyEvent},
+    style::Print,
+    terminal::{self, Clear, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand, QueueableCommand,
 };
 
 use super::{Interface, SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -91,14 +98,17 @@ impl Tui {
         stdout.queue(cursor::Hide).unwrap();
         stdout.queue(cursor::MoveTo(0, 0)).unwrap();
 
-        
+        let mut output = Vec::<u8>::with_capacity(buffer.len() + 2 * SCREEN_HEIGHT as usize);
+
         for y in 0..SCREEN_HEIGHT as usize {
             for x in 0..(2 * SCREEN_WIDTH) as usize {
                 let index = y * (2 * SCREEN_WIDTH as usize) + x;
-                stdout.queue(Print(buffer[index])).unwrap();
+                output.push(buffer[index] as u8)
             }
-            stdout.queue(Print("\r\n")).unwrap(); // Print a newline after each row
+            output.push(b'\r');
+            output.push(b'\n'); // Print a newline after each row
         }
+        stdout.write_all(&output).unwrap();
         stdout.flush().unwrap();
     }
 }
@@ -133,20 +143,20 @@ impl Interface for Tui {
         if Tui::is_key_pressed(KeyCode::Esc) {
             self.close_window = true;
         }
-        
+
         let mut output_buffer = [' '; 2 * (SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize)];
-        
+
         for (index, &pixel) in self.pixel_bitmap.iter().enumerate() {
             let y = index / SCREEN_WIDTH as usize;
             let x = index % SCREEN_WIDTH as usize;
-    
+
             let output_index = y * (2 * SCREEN_WIDTH as usize) + (2 * x);
-    
+
             let char = if pixel { '#' } else { ' ' };
             output_buffer[output_index] = char;
-            output_buffer[output_index + 1] = char; 
+            output_buffer[output_index + 1] = char;
         }
-    
+
         Tui::print_to_term(output_buffer);
     }
 
@@ -182,9 +192,9 @@ impl Interface for Tui {
     fn get_keys_pressed(&self) -> Vec<u8> {
         todo!()
     }
-    
+
     fn get_close_window(&self) -> bool {
-        self.close_window  
+        self.close_window
     }
 
     fn init(&self) {
@@ -200,6 +210,4 @@ impl Interface for Tui {
             .execute(LeaveAlternateScreen)
             .expect("Could not leave Alternate Screen");
     }
-    
-
 }
