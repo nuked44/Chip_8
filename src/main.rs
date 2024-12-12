@@ -16,10 +16,10 @@ use config::*;
 use screen::{tui::Tui, Interface};
 
 fn get_file_in_bytes(filename: &String) -> Vec<u8> {
-    let mut file = File::open(&filename).expect("file not found: {filename}");
-    let metadata = fs::metadata(&filename).expect("unable to read metadata: {filename}");
+    let mut file = File::open(filename).expect("file not found: {filename}");
+    let metadata = fs::metadata(filename).expect("unable to read metadata: {filename}");
     let mut buffer = vec![0u8; metadata.len() as usize];
-    file.read(&mut buffer)
+    file.read_exact(&mut buffer)
         .expect("buffer overflow in main::get_file_in_bytes");
 
     buffer

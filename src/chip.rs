@@ -172,9 +172,8 @@ impl<T: Interface> Chip<T> {
     }
 
     pub fn execute_inst(&mut self) {
-        let val: u16 = 0
-            | (((self.memory[self.pc as usize] as u16) << 8)
-                | self.memory[(self.pc + 1) as usize] as u16);
+        let val: u16 = ((self.memory[self.pc as usize] as u16) << 8)
+            | self.memory[(self.pc + 1) as usize] as u16;
         let inst: Inst = hex_to_inst(val);
         match inst {
             Inst::Empty => self.pc += 2,
@@ -341,11 +340,9 @@ impl<T: Interface> Chip<T> {
                         self.release_key_wait = None;
                         self.pc += 2;
                     }
-                } else {
-                    if let Some(key) = self.keyboard {
-                        self.registers.set_reg_v(vx, key);
-                        self.release_key_wait = Some(key);
-                    }
+                } else if let Some(key) = self.keyboard {
+                    self.registers.set_reg_v(vx, key);
+                    self.release_key_wait = Some(key);
                 }
             }
             Inst::LdDtR { vx } => {

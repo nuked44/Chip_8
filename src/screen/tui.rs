@@ -43,7 +43,7 @@ impl Tui {
         }
         let pixel = &mut self.pixel_bitmap[x as usize + y as usize * SCREEN_WIDTH as usize];
         let before = *pixel;
-        *pixel = *pixel ^ val;
+        *pixel ^= val;
         if !*pixel && before {
             return true;
         }
@@ -97,20 +97,39 @@ impl Tui {
         stdout.queue(Clear(ClearType::All)).unwrap();
         stdout.queue(cursor::MoveTo(0, 0)).unwrap();
 
-        let mut output = Vec::<u8>::with_capacity(buffer.len() + 2 * SCREEN_HEIGHT as usize);
+        match super::TUI_OUTPUT_MODE {
+            super::TuiOutputMode::VecU8 => {
+                let mut output =
+                    Vec::<u8>::with_capacity(buffer.len() + 2 * SCREEN_HEIGHT as usize);
 
-        for y in 0..SCREEN_HEIGHT as usize {
-            for x in 0..(2 * SCREEN_WIDTH) as usize {
-                let index = y * (2 * SCREEN_WIDTH as usize) + x;
-                output.push(buffer[index] as u8)
+                for y in 0..SCREEN_HEIGHT as usize {
+                    for x in 0..(2 * SCREEN_WIDTH) as usize {
+                        let index = y * (2 * SCREEN_WIDTH as usize) + x;
+                        output.push(buffer[index] as u8)
+                    }
+                    if y < SCREEN_HEIGHT as usize - 1 {
+                        output.push(b'\r');
+                        output.push(b'\n');
+                    }
+                }
+                stdout.write_all(&output).unwrap();
             }
-            output.push(b'\r');
-            output.push(b'\n'); // Print a newline after each row
-        }
-        output.pop();
-        output.pop(); // remove last newline to stop occational jitter
+            super::TuiOutputMode::String => {
+                let mut output = String::with_capacity(buffer.len() + 2 * SCREEN_HEIGHT as usize);
 
-        stdout.write_all(&output).unwrap();
+                for y in 0..SCREEN_HEIGHT as usize {
+                    for x in 0..(2 * SCREEN_WIDTH) as usize {
+                        let index = y * (2 * SCREEN_WIDTH as usize) + x;
+                        output.push(buffer[index])
+                    }
+                    if y < SCREEN_HEIGHT as usize - 1 {
+                        output.push_str("\r\n");
+                    }
+                }
+                stdout.write_all(output.as_bytes()).unwrap();
+            }
+        }
+
         stdout.flush().unwrap();
     }
 }
@@ -154,7 +173,11 @@ impl Interface for Tui {
 
             let output_index = y * (2 * SCREEN_WIDTH as usize) + (2 * x);
 
-            let char = if pixel { super::PIXEL_ON } else { super::PIXEL_OFF };
+            let char = if pixel {
+                super::PIXEL_ON
+            } else {
+                super::PIXEL_OFF
+            };
             output_buffer[output_index] = char;
             output_buffer[output_index + 1] = char;
         }
