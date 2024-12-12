@@ -1,13 +1,18 @@
+// Tui Specific
+pub const PIXEL_ON: char = '@';
+pub const PIXEL_OFF: char = ' ';
+
+// Can change
+pub const SCREEN_REFRESH_RATE: usize = 60; // 0<FPS<256
+pub const INSTRUCTION_FREQUENCY: usize = 500; // 0<IPS<n
+
+
 //  Do not change
 pub const MEMSIZE: usize = 4096;
 pub const FONT_POS_START: usize = 0x50;
 pub const PROG_POS_START: u16 = 0x200;
 pub const SCREEN_WIDTH: u8 = 64;
 pub const SCREEN_HEIGHT: u8 = 32;
-
-// Can change
-pub const SCREEN_REFRESH_RATE: usize = 60; // 0<FPS<256
-pub const INSTRUCTION_FREQUENCY: usize = 500; // 0<IPS<n
 
 // --- Keys ---
 

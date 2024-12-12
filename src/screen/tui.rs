@@ -154,7 +154,7 @@ impl Interface for Tui {
 
             let output_index = y * (2 * SCREEN_WIDTH as usize) + (2 * x);
 
-            let char = if pixel { '#' } else { ' ' };
+            let char = if pixel { super::PIXEL_ON } else { super::PIXEL_OFF };
             output_buffer[output_index] = char;
             output_buffer[output_index + 1] = char;
         }
