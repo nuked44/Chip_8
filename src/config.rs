@@ -1,17 +1,19 @@
-#[allow(dead_code)]
 // Tui Specific
+#[allow(dead_code)]
 pub enum TuiOutputMode {
     VecU8,
     String,
 }
 
 pub const TUI_OUTPUT_MODE: TuiOutputMode = TuiOutputMode::VecU8;
-pub const PIXEL_ON: char = '@';
-pub const PIXEL_OFF: char = ' ';
+pub const PIXEL_ON_VEC_U8: char = '@'; // For VecU8
+pub const PIXEL_ON_STRING: char = '█'; // For String
+pub const PIXEL_OFF_VEC_U8: char = ' ';
+pub const PIXEL_OFF_STRING: char = ' ';
 
 // Can change
-pub const SCREEN_REFRESH_RATE: usize = 60; // 0<FPS<256
-pub const INSTRUCTION_FREQUENCY: usize = 500; // 0<IPS<n
+pub const SCREEN_REFRESH_RATE: usize = 60; // 0<FPS<256 // Default: 60
+pub const INSTRUCTION_FREQUENCY: usize = 500; // 0<IPS<n // Default: 500
 
 //  Do not change
 pub const MEMSIZE: usize = 4096;

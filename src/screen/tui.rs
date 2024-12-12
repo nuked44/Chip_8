@@ -167,6 +167,15 @@ impl Interface for Tui {
 
         let mut output_buffer = [' '; 2 * (SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize)];
 
+        let pixel_on = match super::TUI_OUTPUT_MODE {
+            super::TuiOutputMode::VecU8 => super::PIXEL_ON_VEC_U8,
+            super::TuiOutputMode::String => super::PIXEL_ON_STRING,
+        };
+        let pixel_off = match super::TUI_OUTPUT_MODE {
+            super::TuiOutputMode::VecU8 => super::PIXEL_OFF_VEC_U8,
+            super::TuiOutputMode::String => super::PIXEL_OFF_STRING,
+        };
+
         for (index, &pixel) in self.pixel_bitmap.iter().enumerate() {
             let y = index / SCREEN_WIDTH as usize;
             let x = index % SCREEN_WIDTH as usize;
@@ -174,9 +183,9 @@ impl Interface for Tui {
             let output_index = y * (2 * SCREEN_WIDTH as usize) + (2 * x);
 
             let char = if pixel {
-                super::PIXEL_ON
+                pixel_on
             } else {
-                super::PIXEL_OFF
+                pixel_off
             };
             output_buffer[output_index] = char;
             output_buffer[output_index + 1] = char;
@@ -215,7 +224,11 @@ impl Interface for Tui {
     }
 
     fn get_keys_pressed(&self) -> Vec<u8> {
-        todo!()
+        let mut out = Vec::<u8>::new();
+        for key in 0..0xF {
+            if self.get_key(key) {out.push(key);}
+        }
+        out
     }
 
     fn get_close_window(&self) -> bool {
