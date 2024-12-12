@@ -6,8 +6,7 @@ use std::{
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEvent},
-    style::Print,
-    terminal::{self, Clear, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand, QueueableCommand,
 };
 
@@ -95,7 +94,7 @@ impl Tui {
         let mut stdout = io::stdout().lock();
 
         // Reset cursor to the top-left corner
-        stdout.queue(cursor::Hide).unwrap();
+        stdout.queue(Clear(ClearType::All)).unwrap();
         stdout.queue(cursor::MoveTo(0, 0)).unwrap();
 
         let mut output = Vec::<u8>::with_capacity(buffer.len() + 2 * SCREEN_HEIGHT as usize);
@@ -108,6 +107,9 @@ impl Tui {
             output.push(b'\r');
             output.push(b'\n'); // Print a newline after each row
         }
+        output.pop();
+        output.pop(); // remove last newline to stop occational jitter
+
         stdout.write_all(&output).unwrap();
         stdout.flush().unwrap();
     }
@@ -201,6 +203,7 @@ impl Interface for Tui {
         io::stdout()
             .execute(EnterAlternateScreen)
             .expect("Could not Enter alternate Screen");
+        io::stdout().execute(cursor::Hide).unwrap();
         terminal::enable_raw_mode().expect("Could not enable raw mode");
     }
 
