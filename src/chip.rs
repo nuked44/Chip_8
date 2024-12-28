@@ -1,168 +1,39 @@
-use std::time::{Duration, Instant};
-
+use macroquad::{color, input, shapes::draw_rectangle};
 use rand::Rng;
 
 use crate::{
     config::*,
     inst::{hex_to_inst, Inst},
-    screen::Interface,
 };
 
-#[allow(dead_code)]
-pub struct Register {
-    v0: u8,
-    v1: u8,
-    v2: u8,
-    v3: u8,
-    v4: u8,
-    v5: u8,
-    v6: u8,
-    v7: u8,
-    v8: u8,
-    v9: u8,
-    va: u8,
-    vb: u8,
-    vc: u8,
-    vd: u8,
-    ve: u8,
-    vf: u8,
+pub struct Chip {
+    memory: [u8; MEMSIZE],
+    pc: u16,
+    registers: [u8; 16],
     i: u16,
+    stack: [u16; 16],
+    stackpointer: u8,
+    delay_timer: u8,
+    sound_timer: u8,
+    keymap: [bool; 16],
+    display_buffer: [[bool; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize],
 }
 
 #[allow(dead_code)]
-impl Register {
-    pub fn set_reg_v(&mut self, reg: u8, val: u8) {
-        match reg {
-            0x0 => self.v0 = val,
-            0x1 => self.v1 = val,
-            0x2 => self.v2 = val,
-            0x3 => self.v3 = val,
-            0x4 => self.v4 = val,
-            0x5 => self.v5 = val,
-            0x6 => self.v6 = val,
-            0x7 => self.v7 = val,
-            0x8 => self.v8 = val,
-            0x9 => self.v9 = val,
-            0xa => self.va = val,
-            0xb => self.vb = val,
-            0xc => self.vc = val,
-            0xd => self.vd = val,
-            0xe => self.ve = val,
-            0xf => self.vf = val,
-            _ => panic!("Invalid register set access, reg: v{reg:x}"),
-        };
-    }
-
-    pub fn get_reg_v(&self, reg: u8) -> u8 {
-        match reg {
-            0x0 => self.v0,
-            0x1 => self.v1,
-            0x2 => self.v2,
-            0x3 => self.v3,
-            0x4 => self.v4,
-            0x5 => self.v5,
-            0x6 => self.v6,
-            0x7 => self.v7,
-            0x8 => self.v8,
-            0x9 => self.v9,
-            0xA => self.va,
-            0xB => self.vb,
-            0xC => self.vc,
-            0xD => self.vd,
-            0xE => self.ve,
-            0xF => self.vf,
-            _ => panic!("Invalid register get access, reg: v {reg:02x}"),
-        }
-    }
-}
-
-pub struct Chip<T>
-where
-    T: Interface,
-{
-    pub running: bool,
-    pub memory: [u8; MEMSIZE],
-    pub pc: u16,
-    pub registers: Register,
-    pub stack: [u16; 16],
-    pub stackpointer: u8,
-    pub interface: T,
-    pub delay_timer: u8,
-    pub sound_timer: u8,
-    pub keyboard: Option<u8>,
-    release_key_wait: Option<u8>,
-}
-
-#[allow(dead_code)]
-impl<T: Interface> Chip<T> {
-    pub fn new(prog_counter: u16, interface: T) -> Self {
-        Chip {
-            running: false,
+impl Chip {
+    pub fn new(prog_counter: u16) -> Self {
+        Self {
             memory: [0; MEMSIZE],
             pc: prog_counter,
-            registers: Register {
-                v0: 0,
-                v1: 0,
-                v2: 0,
-                v3: 0,
-                v4: 0,
-                v5: 0,
-                v6: 0,
-                v7: 0,
-                v8: 0,
-                v9: 0,
-                va: 0,
-                vb: 0,
-                vc: 0,
-                vd: 0,
-                ve: 0,
-                vf: 0,
-                i: 0,
-            },
+            registers: [0; 16],
+            i: 0,
             stack: [0; 16],
             stackpointer: 0,
-            interface,
             delay_timer: 0,
             sound_timer: 0,
-            keyboard: None,
-            release_key_wait: None,
+            keymap: [false; 16],
+            display_buffer: [[false; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize],
         }
-    }
-
-    pub fn run(&mut self) {
-        self.running = true;
-        let target_frame_time = Duration::from_secs_f64(1f64 / SCREEN_REFRESH_RATE as f64);
-        let mut last_frame = Instant::now();
-
-        let decrement = |timer: &mut u8| *timer = (*timer).saturating_sub(1);
-
-        while self.running && !self.interface.get_close_window() {
-            // Execute next instructions for frame
-            for _ in 0..(INSTRUCTION_FREQUENCY / SCREEN_REFRESH_RATE) {
-                self.execute_inst();
-            }
-
-            // Update Screen
-            self.interface.update_screen();
-
-            // Update Sound and Delay timer
-            decrement(&mut self.delay_timer);
-            decrement(&mut self.sound_timer);
-
-            let now_frame = Instant::now();
-            if (now_frame - last_frame) < target_frame_time {
-                std::thread::sleep(target_frame_time - (now_frame - last_frame));
-            }
-            last_frame = now_frame;
-        }
-    }
-
-    pub fn init_interface(&self) {
-        self.interface.init();
-    }
-
-    pub fn stop_interface(&self) {
-        self.interface.stop();
     }
 
     pub fn load_prog(&mut self, prog: Vec<u8>) {
@@ -178,7 +49,7 @@ impl<T: Interface> Chip<T> {
         match inst {
             Inst::Empty => self.pc += 2,
             Inst::Cls => {
-                self.interface.clear_screen();
+                self.clear_screen();
                 self.pc += 2;
             }
             Inst::Ret => {
@@ -195,199 +66,246 @@ impl<T: Interface> Chip<T> {
                 self.pc = addr;
             }
             Inst::SV { vx, byte } => {
-                if self.registers.get_reg_v(vx) == byte {
+                if self.registers[vx as usize] == byte {
                     self.pc += 2;
                 }
                 self.pc += 2;
             }
             Inst::SnV { vx, byte } => {
-                if self.registers.get_reg_v(vx) != byte {
+                if self.registers[vx as usize] != byte {
                     self.pc += 2;
                 }
                 self.pc += 2;
             }
             Inst::SR { vx, vy } => {
-                if self.registers.get_reg_v(vx) == self.registers.get_reg_v(vy) {
+                if self.registers[vx as usize] == self.registers[vy as usize] {
                     self.pc += 2;
                 }
                 self.pc += 2;
             }
             Inst::LdV { vx, byte } => {
-                self.registers.set_reg_v(vx, byte);
+                self.registers[vx as usize] = byte;
                 self.pc += 2;
             }
             Inst::AddV { vx, byte } => {
-                let (res, _) = self.registers.get_reg_v(vx).overflowing_add(byte);
-                self.registers.set_reg_v(vx, res);
+                let (res, _) = self.registers[vx as usize].overflowing_add(byte);
+                self.registers[vx as usize] = res;
                 self.pc += 2;
             }
             Inst::LdR { vx, vy } => {
-                self.registers.set_reg_v(vx, self.registers.get_reg_v(vy));
+                self.registers[vx as usize] = self.registers[vy as usize];
                 self.pc += 2;
             }
             Inst::OrR { vx, vy } => {
-                let val = self.registers.get_reg_v(vx) | self.registers.get_reg_v(vy);
-                self.registers.set_reg_v(vx, val);
-                self.registers.set_reg_v(0xF, 0);
+                let val = self.registers[vx as usize] | self.registers[vy as usize];
+                self.registers[vx as usize] = val;
+                self.registers[0xF] = 0;
                 self.pc += 2;
             }
             Inst::AndR { vx, vy } => {
-                let val = self.registers.get_reg_v(vx) & self.registers.get_reg_v(vy);
-                self.registers.set_reg_v(vx, val);
-                self.registers.set_reg_v(0xF, 0);
+                let val = self.registers[vx as usize] & self.registers[vy as usize];
+                self.registers[vx as usize] = val;
+                self.registers[0xF] = 0;
                 self.pc += 2;
             }
             Inst::XorR { vx, vy } => {
-                let val = self.registers.get_reg_v(vx) ^ self.registers.get_reg_v(vy);
-                self.registers.set_reg_v(vx, val);
-                self.registers.set_reg_v(0xF, 0);
+                let val = self.registers[vx as usize] ^ self.registers[vy as usize];
+                self.registers[vx as usize] = val;
+                self.registers[0xF] = 0;
                 self.pc += 2;
             }
             Inst::AddR { vx, vy } => {
-                let (res, vf) = self
-                    .registers
-                    .get_reg_v(vx)
-                    .overflowing_add(self.registers.get_reg_v(vy));
-                self.registers.set_reg_v(vx, res);
-                self.registers.set_reg_v(0xF, vf as u8);
+                let (res, vf) =
+                    self.registers[vx as usize].overflowing_add(self.registers[vy as usize]);
+                self.registers[vx as usize] = res;
+                self.registers[0xF] = vf as u8;
                 self.pc += 2;
             }
             Inst::SubR { vx, vy } => {
-                let (res, vf) = self
-                    .registers
-                    .get_reg_v(vx)
-                    .overflowing_sub(self.registers.get_reg_v(vy));
-                self.registers.set_reg_v(vx, res);
-                self.registers.set_reg_v(0xF, !vf as u8);
+                let (res, vf) =
+                    self.registers[vx as usize].overflowing_sub(self.registers[vy as usize]);
+                self.registers[vx as usize] = res;
+                self.registers[0xF] = !vf as u8;
                 self.pc += 2;
             }
             Inst::Shr { vx, vy } => {
-                let val = self.registers.get_reg_v(vy);
-                self.registers.set_reg_v(vx, val >> 1);
-                self.registers.set_reg_v(0xF, val & 0x1);
+                let val = self.registers[vy as usize];
+                self.registers[vx as usize] = val >> 1;
+                self.registers[0xF] = val & 0x1;
                 self.pc += 2;
             }
             Inst::SubnR { vx, vy } => {
-                let (res, vf) = self
-                    .registers
-                    .get_reg_v(vy)
-                    .overflowing_sub(self.registers.get_reg_v(vx));
-                self.registers.set_reg_v(vx, res);
-                self.registers.set_reg_v(0xF, !vf as u8);
+                let (res, vf) =
+                    self.registers[vy as usize].overflowing_sub(self.registers[vx as usize]);
+                self.registers[vx as usize] = res;
+                self.registers[0xF] = !vf as u8;
                 self.pc += 2;
             }
             Inst::Shl { vx, vy } => {
-                let val = self.registers.get_reg_v(vy);
-                self.registers.set_reg_v(vx, val << 1);
-                self.registers.set_reg_v(0xF, (val >> 7) & 0x1);
+                let val = self.registers[vy as usize];
+                self.registers[vx as usize] = val << 1;
+                self.registers[0xF] = (val >> 7) & 0x1;
                 self.pc += 2;
             }
             Inst::SnR { vx, vy } => {
                 self.pc += 2;
-                if self.registers.get_reg_v(vx) != self.registers.get_reg_v(vy) {
+                if self.registers[vx as usize] != self.registers[vy as usize] {
                     self.pc += 2;
                 }
             }
             Inst::LdI { addr } => {
-                self.registers.i = addr;
+                self.i = addr;
                 self.pc += 2;
             }
             Inst::JpV0 { addr } => {
-                self.pc = addr + self.registers.get_reg_v(0x0) as u16;
+                self.pc = addr + self.registers[0x0] as u16;
             }
             Inst::Rnd { vx, byte } => {
                 let val = (rand::thread_rng().gen_range(0..=255) as u8) & byte;
-                self.registers.set_reg_v(vx, val);
+                self.registers[vx as usize] = val;
                 self.pc += 2;
             }
             Inst::Disp { vx, vy, n } => {
                 let mut sprite_buffer: Vec<u8> = Vec::new();
                 for i in 0..n {
-                    sprite_buffer.push(self.memory[(self.registers.i + i as u16) as usize]);
+                    sprite_buffer.push(self.memory[(self.i + i as u16) as usize]);
                 }
-                if self.interface.draw_sprite(
-                    self.registers.get_reg_v(vx),
-                    self.registers.get_reg_v(vy),
+                if self.draw_sprite_to_display_buffer(
+                    self.registers[vx as usize],
+                    self.registers[vy as usize],
                     sprite_buffer,
                 ) {
-                    self.registers.set_reg_v(0xF, 1);
+                    self.registers[0xF] = 1;
                 } else {
-                    self.registers.set_reg_v(0xF, 0);
+                    self.registers[0xF] = 0;
                 }
                 self.pc += 2;
             }
             Inst::SKp { vx } => {
-                let target = self.registers.get_reg_v(vx);
-                if self.interface.get_key(target) {
+                let target = self.registers[vx as usize];
+                if self.is_key_pressed(target) {
                     self.pc += 2;
                 }
                 self.pc += 2;
             }
             Inst::SKnp { vx } => {
-                let target = self.registers.get_reg_v(vx);
-                if !self.interface.get_key(target) {
+                let target = self.registers[vx as usize];
+                if !self.is_key_pressed(target) {
                     self.pc += 2;
                 }
                 self.pc += 2;
             }
             Inst::LdRDt { vx } => {
-                self.registers.set_reg_v(vx, self.delay_timer);
+                self.registers[vx as usize] = self.delay_timer;
                 self.pc += 2;
             }
             Inst::LdRKp { vx } => {
-                if let Some(key) = self.release_key_wait {
-                    if !self.interface.get_key(key) {
-                        self.release_key_wait = None;
+                for i in 0..16 {
+                    if self.is_key_pressed(i) {
+                        self.registers[vx as usize] = i;
                         self.pc += 2;
+                        break;
                     }
-                } else if let Some(key) = self.keyboard {
-                    self.registers.set_reg_v(vx, key);
-                    self.release_key_wait = Some(key);
                 }
             }
             Inst::LdDtR { vx } => {
-                self.delay_timer = self.registers.get_reg_v(vx);
+                self.delay_timer = self.registers[vx as usize];
                 self.pc += 2;
             }
             Inst::LdStR { vx } => {
-                self.sound_timer = self.registers.get_reg_v(vx);
+                self.sound_timer = self.registers[vx as usize];
                 self.pc += 2;
             }
             Inst::AddRI { vx } => {
-                let val = self.registers.i + self.registers.get_reg_v(vx) as u16;
-                self.registers.i = val;
+                let val = self.i + self.registers[vx as usize] as u16;
+                self.i = val;
                 self.pc += 2;
             }
             Inst::LdIF { vx } => {
-                let x = self.registers.get_reg_v(vx);
-                self.registers.i = (FONT_POS_START + 5 * x as usize) as u16;
+                let x = self.registers[vx as usize];
+                self.i = (FONT_POS_START + 5 * x as usize) as u16;
                 self.pc += 2;
             }
             Inst::LdBCDR { vx } => {
-                let val = self.registers.get_reg_v(vx);
-                self.memory[self.registers.i as usize] = val / 100;
-                self.memory[(self.registers.i + 1) as usize] = (val % 100) / 10;
-                self.memory[(self.registers.i + 2) as usize] = (val % 100) % 10;
+                let val = self.registers[vx as usize];
+                self.memory[self.i as usize] = val / 100;
+                self.memory[(self.i + 1) as usize] = (val % 100) / 10;
+                self.memory[(self.i + 2) as usize] = (val % 100) % 10;
                 self.pc += 2;
             }
             Inst::LdIR { vx } => {
-                let i = self.registers.i;
+                let i = self.i;
                 for x in 0..=vx {
-                    self.memory[(i + x as u16) as usize] = self.registers.get_reg_v(x);
+                    self.memory[(i + x as u16) as usize] = self.registers[x as usize];
                 }
-                self.registers.i = i + vx as u16 + 1;
+                self.i = i + vx as u16 + 1;
                 self.pc += 2;
             }
             Inst::LdRI { vx } => {
-                let i = self.registers.i;
+                let i = self.i;
                 for x in 0..=vx {
-                    self.registers
-                        .set_reg_v(x, self.memory[(i + x as u16) as usize]);
+                    self.registers[x as usize] = self.memory[(i + x as u16) as usize];
                 }
-                self.registers.i = i + vx as u16 + 1;
+                self.i = i + vx as u16 + 1;
                 self.pc += 2;
             }
         }
+    }
+
+    pub fn decrement_delay_timer(&mut self) {
+        let decrement = |timer: &mut u8| *timer = (*timer).saturating_sub(1);
+        decrement(&mut self.delay_timer);
+    }
+
+    pub fn decrement_sound_timer(&mut self) {
+        let decrement = |timer: &mut u8| *timer = (*timer).saturating_sub(1);
+        decrement(&mut self.sound_timer);
+    }
+
+    pub fn render_display_buffer(&self) {
+        for y in 0..SCREEN_HEIGHT as usize{
+            for x in 0..SCREEN_WIDTH as usize {
+                if self.display_buffer[y][x] {
+                    // Draw a white rectangle for each "on" pixel
+                    draw_rectangle(
+                        (x * WINDOW_SCALE as usize) as f32,     // X position scaled
+                        (y * WINDOW_SCALE as usize) as f32,     // Y position scaled
+                        WINDOW_SCALE as f32,                    // Width of the rectangle
+                        WINDOW_SCALE as f32,                    // Height of the rectangle
+                        color::Color::from_hex(PIXEL_ON_COLOR), // Color
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn handle_input(&mut self) {
+        let key_mappings = [
+        (input::KeyCode::X, 0),
+        (input::KeyCode::Key1, 1),
+        (input::KeyCode::Key2, 2),
+        (input::KeyCode::Key3, 3),
+        (input::KeyCode::Q, 4),
+        (input::KeyCode::W, 5),
+        (input::KeyCode::E, 6),
+        (input::KeyCode::A, 7),
+        (input::KeyCode::S, 8),
+        (input::KeyCode::D, 9),
+        (input::KeyCode::Z, 10),
+        (input::KeyCode::C, 11),
+        (input::KeyCode::Key4, 12),
+        (input::KeyCode::R, 13),
+        (input::KeyCode::F, 14),
+        (input::KeyCode::V, 15),
+    ];
+
+    self.keymap = [false; 16];
+
+    for (key, index) in key_mappings {
+        if input::is_key_down(key) {
+            self.keymap[index] = true;
+        }
+    }
     }
 
     fn load_font(&mut self) {
@@ -431,6 +349,53 @@ impl<T: Interface> Chip<T> {
             self.memory[addr as usize]
         } else {
             panic!("Tried to access memory out of bounds, Memsize: {MEMSIZE}, addr: {addr}");
+        }
+    }
+
+    fn set_pixel(&mut self, x: u8, y: u8, val: bool) -> bool {
+        // Clip out of bounds
+        if x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT {
+            return false;
+        }
+        let pixel = &mut self.display_buffer[y as usize][x as usize];
+        let before = *pixel;
+        *pixel ^= val;
+        if !*pixel && before {
+            return true;
+        }
+        false
+    }
+
+    fn draw_sprite_to_display_buffer(&mut self, x: u8, y: u8, sprite: Vec<u8>) -> bool {
+        let mut pixel_erased: bool = false;
+        let x = x % SCREEN_WIDTH;
+        let y = y % SCREEN_HEIGHT;
+        for (iteration, line) in sprite.iter().enumerate() {
+            for bit in 0..8u8 {
+                if self.set_pixel(
+                    x + bit,
+                    y + iteration as u8,
+                    (line & (0b10000000 >> bit)) != 0,
+                ) {
+                    pixel_erased = true;
+                }
+            }
+        }
+        pixel_erased
+    }
+
+    fn is_key_pressed(&self, target: u8) -> bool {
+        if target < 16 {
+            return self.keymap[target as usize];
+        }
+        panic!("is_key_pressed check out of bounds {target}")
+    }
+
+    fn clear_screen(&mut self) {
+        for i in 0..SCREEN_HEIGHT {
+            for j in 0..SCREEN_WIDTH {
+                self.display_buffer[i as usize][j as usize] = false;
+            }
         }
     }
 }
